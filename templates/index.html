@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solar Load Calculator Automation</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h1>Solar Load Automation</h1>
+            <p class="subtitle">Extract data from electricity bills and generate solar load reports instantly.</p>
+
+            <div id="upload-section">
+                <div class="upload-zone" id="drop-zone">
+                    <i class="fas fa-cloud-upload-alt"></i>
+                    <p>Drag and drop your electricity bill (PDF/Image) here</p>
+                    <p style="font-size: 0.8rem; color: #64748b;">or click to browse files</p>
+                    <input type="file" id="file-input" class="hidden" accept="image/*,.pdf">
+                </div>
+            </div>
+
+            <div class="loader" id="loader">
+                <div class="spinner"></div>
+                <p>AI is processing your bill...</p>
+            </div>
+
+            <div id="result-section">
+                <h3 style="text-align: center; margin-bottom: 1rem;">Extracted Data</h3>
+                <p style="text-align: center; font-size: 0.9rem; color: #94a3b8;">Review and edit values if necessary before generating Excel.</p>
+                
+                <div class="data-grid" id="data-grid">
+                    <!-- Dynamic fields will be injected here -->
+                </div>
+
+                <div style="text-align: center; margin-top: 3rem; display: flex; justify-content: center; gap: 1rem;">
+                    <button class="btn" id="generate-btn">
+                        <i class="fas fa-file-excel"></i> Generate & Download
+                    </button>
+                    <button class="btn" id="back-btn" style="background: rgba(255,255,255,0.1); color: white;">
+                        <i class="fas fa-undo"></i> Process Another
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const loader = document.getElementById('loader');
+        const uploadSection = document.getElementById('upload-section');
+        const resultSection = document.getElementById('result-section');
+        const dataGrid = document.getElementById('data-grid');
+        const generateBtn = document.getElementById('generate-btn');
+        const backBtn = document.getElementById('back-btn');
+
+        let extractedData = {};
+
+        dropZone.onclick = () => fileInput.click();
+        
+        backBtn.addEventListener('click', () => {
+            console.log('Resetting UI...');
+            resetUI();
+        });
+
+        fileInput.onchange = (e) => {
+            const file = e.target.files[0];
+            if (file) handleUpload(file);
+        };
+
+        dropZone.ondragover = (e) => {
+            e.preventDefault();
+            dropZone.style.borderColor = 'var(--primary)';
+        };
+
+        dropZone.ondragleave = () => {
+            dropZone.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+        };
+
+        dropZone.ondrop = (e) => {
+            e.preventDefault();
+            const file = e.dataTransfer.files[0];
+            if (file) handleUpload(file);
+        };
+
+        async function handleUpload(file) {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            uploadSection.classList.add('hidden');
+            loader.style.display = 'block';
+
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+
+                if (data.error) {
+                    alert('Error: ' + data.error);
+                    resetUI();
+                } else {
+                    extractedData = data;
+                    renderData(data);
+                }
+            } catch (err) {
+                alert('Upload failed: ' + err.message);
+                resetUI();
+            }
+        }
+
+        function renderData(data) {
+            loader.style.display = 'none';
+            resultSection.style.display = 'block';
+            dataGrid.innerHTML = '';
+
+            for (const [key, value] of Object.entries(data)) {
+                const item = document.createElement('div');
+                item.className = 'data-item';
+                item.innerHTML = `
+                    <label>${key}</label>
+                    <input type="text" value="${value || ''}" data-key="${key}">
+                `;
+                dataGrid.appendChild(item);
+            }
+        }
+
+        function resetUI() {
+            loader.style.display = 'none';
+            uploadSection.classList.remove('hidden');
+            resultSection.style.display = 'none';
+            fileInput.value = '';
+        }
+
+        generateBtn.onclick = async () => {
+            // Collect edited data
+            const updatedData = {};
+            dataGrid.querySelectorAll('input').forEach(input => {
+                updatedData[input.getAttribute('data-key')] = input.value;
+            });
+
+            generateBtn.disabled = true;
+            generateBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
+
+            try {
+                const response = await fetch('/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(updatedData)
+                });
+                const res = await response.json();
+
+                if (res.download_url) {
+                    const a = document.createElement('a');
+                    a.href = res.download_url;
+                    a.download = '';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                } else {
+                    alert('Error generating Excel');
+                }
+            } catch (err) {
+                alert('Generation failed');
+            } finally {
+                generateBtn.disabled = false;
+                generateBtn.innerHTML = '<i class="fas fa-file-excel"></i> Generate & Download';
+            }
+        };
+    </script>
+</body>
+</html>

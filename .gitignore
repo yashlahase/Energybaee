@@ -1,0 +1,13 @@
+.env
+__pycache__/
+*.py[cod]
+*$py.class
+static/uploads/*
+static/outputs/*
+/tmp/*
+.DS_Store
+node_modules/
+dist/
+build/
+.vercel
+.env

@@ -1,0 +1,6 @@
+flask
+google-generativeai
+openpyxl
+pandas
+python-dotenv
+Pillow
