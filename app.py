@@ -36,36 +36,54 @@ def upload_file():
     filepath = os.path.join(UPLOAD_FOLDER, filename)
     file.save(filepath)
 
+    mime_type = file.content_type or "application/octet-stream"
+    print(f"Processing file: {file.filename} with mime_type: {mime_type}")
+
     try:
         # Extract data
-        data = process_bill(filepath)
+        data = process_bill(filepath, mime_type)
         if "error" in data:
+            print(f"Extraction returned error: {data['error']}")
             return jsonify(data), 500
         
         # Store data in session for the next step
         session['extracted_data'] = data
         return jsonify(data)
     except Exception as e:
+        import traceback
+        print("--- UPLOAD ERROR ---")
+        print(traceback.format_exc())
         return jsonify({"error": str(e)}), 500
+
+@app.errorhandler(500)
+def handle_500(e):
+    import traceback
+    print("--- SERVER ERROR 500 ---")
+    print(traceback.format_exc())
+    return jsonify({"error": "Internal Server Error", "details": str(e)}), 500
 
 @app.route('/generate', methods=['POST'])
 def generate_excel():
-    # Get potentially edited data from request
-    data = request.json
-    if not data:
-        data = session.get('extracted_data')
-
-    if not data:
+    # Get potentially edited data from request (list of consumer data)
+    data_list = request.json
+    
+    if not data_list:
         return jsonify({"error": "No data to process"}), 400
 
+    if not isinstance(data_list, list):
+        data_list = [data_list]
+
     try:
-        output_filename = f"Solar_Load_{uuid.uuid4().hex[:8]}.xlsx"
+        output_filename = f"Solar_Load_Calculator_{uuid.uuid4().hex[:8]}.xlsx"
         output_path = os.path.join(OUTPUT_FOLDER, output_filename)
         
-        fill_excel_template(data, TEMPLATE_PATH, output_path)
+        fill_excel_template(data_list, output_path)
         
         return jsonify({"download_url": f"/download/{output_filename}"})
     except Exception as e:
+        import traceback
+        print("--- GENERATE ERROR ---")
+        print(traceback.format_exc())
         return jsonify({"error": str(e)}), 500
 
 @app.route('/download/<filename>')

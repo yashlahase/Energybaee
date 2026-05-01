@@ -17,23 +17,21 @@
             <div id="upload-section">
                 <div class="upload-zone" id="drop-zone">
                     <i class="fas fa-cloud-upload-alt"></i>
-                    <p>Drag and drop your electricity bill (PDF/Image) here</p>
-                    <p style="font-size: 0.8rem; color: #64748b;">or click to browse files</p>
-                    <input type="file" id="file-input" class="hidden" accept="image/*,.pdf">
+                    <p>Drag and drop your electricity bills (PDF/Image) here</p>
+                    <p style="font-size: 0.8rem; color: #64748b;">You can select multiple bills to compare</p>
+                    <input type="file" id="file-input" class="hidden" accept="image/*,.pdf" multiple>
                 </div>
             </div>
 
             <div class="loader" id="loader">
                 <div class="spinner"></div>
-                <p>AI is processing your bill...</p>
+                <p id="loader-text">AI is processing your bills...</p>
             </div>
 
             <div id="result-section">
                 <h3 style="text-align: center; margin-bottom: 1rem;">Extracted Data</h3>
-                <p style="text-align: center; font-size: 0.9rem; color: #94a3b8;">Review and edit values if necessary before generating Excel.</p>
-                
-                <div class="data-grid" id="data-grid">
-                    <!-- Dynamic fields will be injected here -->
+                <div id="consumers-container" style="display: flex; flex-wrap: wrap; gap: 2rem; justify-content: center;">
+                    <!-- Dynamic consumer grids will be injected here -->
                 </div>
 
                 <div style="text-align: center; margin-top: 3rem; display: flex; justify-content: center; gap: 1rem;">
@@ -52,24 +50,24 @@
         const dropZone = document.getElementById('drop-zone');
         const fileInput = document.getElementById('file-input');
         const loader = document.getElementById('loader');
+        const loaderText = document.getElementById('loader-text');
         const uploadSection = document.getElementById('upload-section');
         const resultSection = document.getElementById('result-section');
-        const dataGrid = document.getElementById('data-grid');
+        const consumersContainer = document.getElementById('consumers-container');
         const generateBtn = document.getElementById('generate-btn');
         const backBtn = document.getElementById('back-btn');
 
-        let extractedData = {};
+        let allExtractedData = [];
 
         dropZone.onclick = () => fileInput.click();
         
         backBtn.addEventListener('click', () => {
-            console.log('Resetting UI...');
             resetUI();
         });
 
         fileInput.onchange = (e) => {
-            const file = e.target.files[0];
-            if (file) handleUpload(file);
+            const files = e.target.files;
+            if (files.length > 0) handleUploads(files);
         };
 
         dropZone.ondragover = (e) => {
@@ -83,51 +81,129 @@
 
         dropZone.ondrop = (e) => {
             e.preventDefault();
-            const file = e.dataTransfer.files[0];
-            if (file) handleUpload(file);
+            const files = e.dataTransfer.files;
+            if (files.length > 0) handleUploads(files);
         };
 
-        async function handleUpload(file) {
-            const formData = new FormData();
-            formData.append('file', file);
-
+        async function handleUploads(files) {
+            allExtractedData = [];
             uploadSection.classList.add('hidden');
             loader.style.display = 'block';
+            
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                loaderText.innerText = `AI is processing bill ${i+1} of ${files.length}...`;
+                
+                const formData = new FormData();
+                formData.append('file', file);
 
-            try {
-                const response = await fetch('/upload', {
-                    method: 'POST',
-                    body: formData
-                });
-                const data = await response.json();
+                try {
+                    const response = await fetch('/upload', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const data = await response.json();
 
-                if (data.error) {
-                    alert('Error: ' + data.error);
-                    resetUI();
-                } else {
-                    extractedData = data;
-                    renderData(data);
+                    if (data.error) {
+                        alert(`Error processing ${file.name}: ${data.error}`);
+                        console.error('Error processing file:', file.name, data.error);
+                    } else {
+                        allExtractedData.push(data);
+                    }
+                } catch (err) {
+                    alert(`Upload failed for ${file.name}: ${err.message}`);
+                    console.error('Upload failed for file:', file.name, err.message);
                 }
-            } catch (err) {
-                alert('Upload failed: ' + err.message);
+            }
+
+            if (allExtractedData.length > 0) {
+                renderData();
+            } else {
                 resetUI();
             }
         }
 
-        function renderData(data) {
+        function renderData() {
             loader.style.display = 'none';
             resultSection.style.display = 'block';
-            dataGrid.innerHTML = '';
+            consumersContainer.innerHTML = '';
 
-            for (const [key, value] of Object.entries(data)) {
-                const item = document.createElement('div');
-                item.className = 'data-item';
-                item.innerHTML = `
-                    <label>${key}</label>
-                    <input type="text" value="${value || ''}" data-key="${key}">
-                `;
-                dataGrid.appendChild(item);
-            }
+            allExtractedData.forEach((data, index) => {
+                const consumerDiv = document.createElement('div');
+                consumerDiv.className = 'consumer-data-block';
+                consumerDiv.style.flex = "1";
+                consumerDiv.style.minWidth = "400px";
+                consumerDiv.style.background = "rgba(255,255,255,0.03)";
+                consumerDiv.style.padding = "1.5rem";
+                consumerDiv.style.borderRadius = "16px";
+                consumerDiv.style.border = "1px solid rgba(255,255,255,0.1)";
+                
+                consumerDiv.innerHTML = `<h3 style="color: var(--primary); margin-bottom: 1rem;">Consumer ${index + 1}</h3>`;
+                
+                const grid = document.createElement('div');
+                grid.className = 'data-grid';
+                grid.style.display = "grid";
+                grid.style.gridTemplateColumns = "1fr 1fr";
+                grid.style.gap = "10px";
+                
+                // Show core fields
+                const coreFields = [
+                    ['consumer_name', 'Name'],
+                    ['consumer_number', 'Number'],
+                    ['fixed_charges', 'Fixed Charges'],
+                    ['sanctioned_load', 'Sanct. Load'],
+                    ['connection_type', 'Type']
+                ];
+
+                coreFields.forEach(([key, label]) => {
+                    const item = document.createElement('div');
+                    item.className = 'data-item';
+                    item.innerHTML = `
+                        <label>${label}</label>
+                        <input type="text" value="${data[key] || ''}" data-consumer="${index}" data-key="${key}">
+                    `;
+                    grid.appendChild(item);
+                });
+                
+                consumerDiv.appendChild(grid);
+
+                // Add History Table Preview
+                if (data.consumption_history && data.consumption_history.length > 0) {
+                    const historyTitle = document.createElement('h4');
+                    historyTitle.innerText = "Consumption History";
+                    historyTitle.style.marginTop = "2rem";
+                    historyTitle.style.marginBottom = "0.5rem";
+                    consumerDiv.appendChild(historyTitle);
+
+                    const tableWrapper = document.createElement('div');
+                    tableWrapper.style.overflowX = "auto";
+                    
+                    const table = document.createElement('table');
+                    table.style.width = "100%";
+                    table.style.borderCollapse = "collapse";
+                    table.style.fontSize = "0.8rem";
+                    table.innerHTML = `
+                        <thead>
+                            <tr style="border-bottom: 1px solid rgba(255,255,255,0.1); text-align: left;">
+                                <th style="padding: 5px;">Month</th>
+                                <th style="padding: 5px;">Units</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${data.consumption_history.map(h => `
+                                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                                    <td style="padding: 5px;">${h.month || ''}</td>
+                                    <td style="padding: 5px;">${h.units || ''}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    `;
+                    tableWrapper.appendChild(table);
+                    consumerDiv.appendChild(tableWrapper);
+                }
+                
+                consumersContainer.appendChild(consumerDiv);
+            });
         }
 
         function resetUI() {
@@ -135,13 +211,20 @@
             uploadSection.classList.remove('hidden');
             resultSection.style.display = 'none';
             fileInput.value = '';
+            allExtractedData = [];
         }
 
         generateBtn.onclick = async () => {
-            // Collect edited data
-            const updatedData = {};
-            dataGrid.querySelectorAll('input').forEach(input => {
-                updatedData[input.getAttribute('data-key')] = input.value;
+            // Collect edited data from each consumer block
+            const updatedDataList = [];
+            
+            allExtractedData.forEach((originalData, index) => {
+                const updatedConsumer = { ...originalData };
+                const inputs = consumersContainer.querySelectorAll(`input[data-consumer="${index}"]`);
+                inputs.forEach(input => {
+                    updatedConsumer[input.getAttribute('data-key')] = input.value;
+                });
+                updatedDataList.push(updatedConsumer);
             });
 
             generateBtn.disabled = true;
@@ -151,7 +234,7 @@
                 const response = await fetch('/generate', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(updatedData)
+                    body: JSON.stringify(updatedDataList)
                 });
                 const res = await response.json();
 
